@@ -23,18 +23,42 @@
 #   5. First-person vacuum voice, a small machine keeping a straight
 #      face, not the owner putting words in its mouth.
 import os
+import tempfile
 
 EXCUSE = (
     "My LiDAR mapped the dust under your bed as a second sofa, "
     "so I left it alone. I do not clean furniture. I clean floors."
 )
 
+# Gate mirror: the sealed scorer accepts UTF-8 text of 1-140 characters,
+# not only white space. Fail loudly here, never ship an entry the gate
+# would refuse.
+assert 1 <= len(EXCUSE) <= 140, "excuse must be 1-140 characters"
+assert "\n" not in EXCUSE, "excuse must be one line"
+assert EXCUSE.strip() == EXCUSE, "excuse must not start or end with whitespace"
+
+
+def write_entry(out_dir, text):
+    """Write the entry atomically: temp file in the same directory, then
+    rename over the target, so a reader never sees a half-written file."""
+    os.makedirs(out_dir, exist_ok=True)
+    target = os.path.join(out_dir, "entry.txt")
+    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=".entry-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
 
 def main():
     out = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, "entry.txt"), "w", encoding="utf-8") as f:
-        f.write(EXCUSE)
+    write_entry(out, EXCUSE)
 
 
 if __name__ == "__main__":
